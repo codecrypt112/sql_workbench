@@ -1,0 +1,1055 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>SQL Workbench Professional — FK-aware</title>
+<style>
+/* theme and layout */
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',Tahoma, Geneva, Verdana, sans-serif;background:#1e1e1e;color:#e0e0e0;height:100vh;overflow:hidden}
+.workbench-container{display:grid;grid-template-columns:280px 1fr;grid-template-rows:50px 1fr 25px;height:100vh;gap:1px;background:#2d2d30}
+.header{grid-column:1/-1;background:#2d2d30;color:#fff;display:flex;align-items:center;padding:0 15px;border-bottom:1px solid #3e3e42}
+.header h1{font-size:16px;font-weight:600}
+.header-actions{margin-left:auto;display:flex;gap:10px}
+.header-btn{padding:6px 12px;background:#0e639c;border:none;color:white;border-radius:3px;cursor:pointer;font-size:12px}
+.header-btn:hover{background:#1177bb}
+.sidebar{background:#252526;border-right:1px solid #3e3e42;overflow-y:auto;display:flex;flex-direction:column}
+.sidebar-section{border-bottom:1px solid #3e3e42}
+.sidebar-header{background:#2d2d30;padding:8px 15px;font-size:12px;font-weight:600;color:#cccccc;border-bottom:1px solid #3e3e42}
+.main-content{background:#1e1e1e;display:flex;flex-direction:column;overflow:hidden}
+.tabs{display:flex;background:#2d2d30;border-bottom:1px solid #3e3e42}
+.tab{padding:8px 16px;cursor:pointer;font-size:13px;color:#cccccc;border-right:1px solid #3e3e42;background:#2d2d30}
+.tab.active{background:#1e1e1e;color:#fff}
+.tab:hover:not(.active){background:#3e3e42}
+.tab-content{flex:1;overflow:hidden;display:none;flex-direction:column}
+.tab-content.active{display:flex}
+.query-panel{height:220px;border-bottom:1px solid #3e3e42;display:flex;flex-direction:column}
+.query-toolbar{background:#2d2d30;padding:6px 10px;display:flex;gap:6px;border-bottom:1px solid #3e3e42}
+.toolbar-btn{padding:6px 10px;background:#0e639c;border:none;color:white;border-radius:2px;cursor:pointer;font-size:12px}
+.toolbar-btn:hover{background:#1177bb}
+.query-editor{flex:1;background:#1e1e1e;padding:8px}
+.query-editor textarea{width:100%;height:100%;background:#1e1e1e;color:#d4d4d4;border:none;padding:10px;font-family:'Consolas','Monaco',monospace;font-size:14px;resize:none;outline:none;line-height:1.6}
+.results-panel{flex:1;display:flex;flex-direction:column;background:#1e1e1e}
+.results-toolbar{background:#2d2d30;padding:8px 12px;font-size:12px;color:#cccccc;border-bottom:1px solid #3e3e42;display:flex;justify-content:space-between;align-items:center}
+.results-content{flex:1;overflow:auto;padding:10px}
+table{width:100%;border-collapse:collapse;background:#252526;font-size:13px}
+th{background:#2d2d30;color:#fff;padding:8px 12px;text-align:left;border:1px solid #3e3e42;font-weight:600;position:sticky;top:0}
+td{padding:6px 12px;border:1px solid #3e3e42;color:#d4d4d4}
+tr:nth-child(even){background:#2d2d30}
+tr:hover{background:#094771}
+.database-tree{padding:10px 0;flex:1;overflow-y:auto}
+.tree-node{padding:4px 20px;cursor:pointer;font-size:13px;display:flex;align-items:center;gap:8px;user-select:none}
+.tree-node:hover{background:#094771}
+.tree-node.selected{background:#0e639c;color:white}
+.tree-node.database{font-weight:600;color:#4fc3f7}
+.tree-node.table{margin-left:20px;color:#a5d6a7}
+.tree-node.column{margin-left:40px;color:#ffcc80;font-size:12px}
+.tree-icon{width:16px;font-size:12px}
+.schema-designer{position:relative;background:#1e1e1e;overflow:auto;height:100%;min-height:300px;padding:20px}
+.table-box{position:absolute;background:#252526;border:1px solid #3e3e42;border-radius:4px;min-width:220px;box-shadow:0 2px 8px rgba(0,0,0,0.3);cursor:move}
+.table-header{background:#2d2d30;color:#fff;padding:8px 12px;font-weight:600;font-size:13px;border-bottom:1px solid #3e3e42;display:flex;align-items:center;gap:8px}
+.table-fields{padding:0}
+.field{padding:6px 12px;border-bottom:1px solid #3e3e42;font-size:12px;color:#d4d4d4;display:flex;align-items:center;gap:8px;white-space:nowrap}
+.field:last-child{border-bottom:none}
+.field.primary-key{color:#ffd54f}
+.field.foreign-key{color:#81c784}
+.relationship-line{position:absolute;pointer-events:none;z-index:1}
+.relationship-path{stroke:#0e639c;stroke-width:3;fill:none;marker-end:url(#arrowhead);stroke-linecap:round}
+.relationship-label{fill:#e0e0e0;font-size:12px;pointer-events:none}
+.status-bar{grid-column:1/-1;background:#007acc;color:white;padding:4px 15px;font-size:12px;display:flex;justify-content:space-between;align-items:center}
+.modal{display:none;position:fixed;z-index:1000;left:0;top:0;width:100%;height:100%;background:rgba(0,0,0,0.5)}
+.modal-content{background:#2d2d30;margin:8% auto;padding:18px;border:1px solid #3e3e42;width:680px;border-radius:4px;color:#e0e0e0}
+.modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:15px}
+.modal-title{font-size:16px;font-weight:600}
+.close-btn{background:none;border:none;color:#e0e0e0;font-size:20px;cursor:pointer;padding:0;width:28px;height:28px}
+.form-group{margin-bottom:12px}
+.form-group label{display:block;margin-bottom:6px;font-size:13px;font-weight:500}
+.form-group input,.form-group select,.form-group textarea{width:100%;padding:8px;background:#1e1e1e;border:1px solid #3e3e42;color:#e0e0e0;border-radius:2px;font-size:13px}
+.form-group input:focus,.form-group select:focus,.form-group textarea:focus{outline:none;border-color:#0e639c}
+.modal-actions{display:flex;gap:10px;justify-content:flex-end}
+.btn{padding:8px 16px;border:none;border-radius:2px;cursor:pointer;font-size:13px}
+.btn-primary{background:#0e639c;color:white}
+.btn-primary:hover{background:#1177bb}
+.btn-secondary{background:#3e3e42;color:#e0e0e0}
+.btn-secondary:hover{background:#4e4e52}
+.context-menu{position:fixed;background:#2d2d30;border:1px solid #3e3e42;border-radius:2px;box-shadow:0 2px 8px rgba(0,0,0,0.3);padding:2px 0;z-index:1001;display:none}
+.context-menu-item{padding:6px 12px;cursor:pointer;font-size:13px;color:#e0e0e0}
+.context-menu-item:hover{background:#094771}
+.empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:#6c6c6c;font-size:14px;padding:20px}
+.columns-table{width:100%;border-collapse:collapse;margin-bottom:10px}
+.columns-table th,.columns-table td{padding:6px;border:1px solid #3e3e42;background:#1e1e1e;color:#e0e0e0}
+.small{font-size:12px;color:#bfc7cf}
+.status-error{color:#ffb4a3}
+.status-success{color:#b3f0c7}
+</style>
+</head>
+<body>
+<div class="workbench-container">
+  <div class="header">
+    <h1>SQL Workbench Professional</h1>
+    <div class="header-actions">
+      <button class="header-btn" onclick="showCreateDatabaseModal()">New Database</button>
+      <button class="header-btn" onclick="showCreateTableModal()">New Table</button>
+    </div>
+  </div>
+
+  <div class="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-header">DATABASES</div>
+      <div class="database-tree" id="databaseTree"></div>
+    </div>
+  </div>
+
+  <div class="main-content">
+    <div class="tabs">
+      <div class="tab active" onclick="showTab('query', event)">Query</div>
+      <div class="tab" onclick="showTab('schema', event)">Schema Diagram</div>
+      <div class="tab" onclick="showTab('data', event)">Data</div>
+    </div>
+
+    <div id="query" class="tab-content active">
+      <div class="query-panel">
+        <div class="query-toolbar">
+          <button class="toolbar-btn" onclick="executeQuery()">Execute (F5)</button>
+          <button class="toolbar-btn" onclick="clearQuery()">Clear</button>
+          <button class="toolbar-btn" onclick="formatQuery()">Format</button>
+          <div style="margin-left:auto;color:#bfc7cf;font-size:12px;display:flex;align-items:center;gap:8px">
+            <span class="small">Current DB:</span><strong id="currentDbName">sample_db</strong>
+          </div>
+        </div>
+        <div class="query-editor">
+          <textarea id="sqlQuery" placeholder="Enter your SQL query here..."></textarea>
+        </div>
+      </div>
+
+      <div class="results-panel">
+        <div class="results-toolbar">
+          <span id="resultsStatus">Ready</span>
+        </div>
+        <div class="results-content" id="queryResults">
+          <div class="empty-state"><p>Execute a query to see results</p></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="schema" class="tab-content">
+      <div class="schema-designer" id="schemaDesigner">
+        <svg id="relationshipSvg" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:1">
+          <defs>
+            <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+              <polygon points="0 0, 10 3.5, 0 7" fill="#0e639c"></polygon>
+            </marker>
+          </defs>
+        </svg>
+      </div>
+    </div>
+
+    <div id="data" class="tab-content">
+      <div class="empty-state"><p>Select a table from the database tree to view data</p></div>
+    </div>
+  </div>
+
+  <div class="status-bar">
+    <span id="statusText">Ready</span>
+    <span id="connectionText">Connected to localhost</span>
+  </div>
+</div>
+
+<!-- Create Database Modal -->
+<div id="createDatabaseModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header"><h3 class="modal-title">Create Database</h3>
+      <button class="close-btn" onclick="closeModal('createDatabaseModal')">&times;</button>
+    </div>
+    <div class="form-group">
+      <label for="dbName">Database Name</label>
+      <input id="dbName" placeholder="Enter database name" />
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" onclick="createDatabase()">Create</button>
+      <button class="btn btn-secondary" onclick="closeModal('createDatabaseModal')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Create Table Modal (form-based columns UI) -->
+<div id="createTableModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header"><h3 class="modal-title">Create Table</h3>
+      <button class="close-btn" onclick="closeModal('createTableModal')">&times;</button>
+    </div>
+
+    <div class="form-group">
+      <label for="tableDbSelect">Create in Database</label>
+      <select id="tableDbSelect"></select>
+    </div>
+
+    <div class="form-group">
+      <label for="tableName">Table Name</label>
+      <input id="tableName" placeholder="Enter table name" />
+    </div>
+
+    <div class="form-group">
+      <label>Columns</label>
+      <table class="columns-table" id="columnsTable">
+        <thead><tr>
+          <th style="width:24%">Name</th>
+          <th style="width:24%">Type (e.g., INT, VARCHAR(100))</th>
+          <th style="width:10%">PK</th>
+          <th style="width:12%">NULL</th>
+          <th style="width:20%">References (table.column)</th>
+          <th style="width:10%"></th>
+        </tr></thead>
+        <tbody id="columnsTbody"></tbody>
+      </table>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn btn-secondary" onclick="addColumnRow()">Add Column</button>
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-primary" onclick="createTableFromForm()">Create</button>
+      <button class="btn btn-secondary" onclick="closeModal('createTableModal')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Context menu -->
+<div id="contextMenu" class="context-menu">
+  <div class="context-menu-item" onclick="editTable()">Edit Table</div>
+  <div class="context-menu-item" onclick="dropTable()">Drop Table</div>
+  <div class="context-menu-item" onclick="viewTableData()">View Data</div>
+</div>
+
+<script>
+/* ---------------------------
+   In-memory DB structure & state
+   --------------------------- */
+let databases = {
+  sample_db: {
+    tables: {
+      employees: {
+        columns: [
+          {name:'id', type:'INT', primaryKey:true, nullable:false},
+          {name:'name', type:'VARCHAR(100)', primaryKey:false, nullable:false},
+          {name:'department_id', type:'INT', primaryKey:false, nullable:true, foreignKey:{table:'departments', column:'id'}},
+          {name:'salary', type:'DECIMAL(10,2)', primaryKey:false, nullable:true}
+        ],
+        data: []
+      },
+      departments: {
+        columns: [
+          {name:'id', type:'INT', primaryKey:true, nullable:false},
+          {name:'name', type:'VARCHAR(50)', primaryKey:false, nullable:false}
+        ],
+        data: []
+      }
+    }
+  }
+};
+
+let currentDatabase = 'sample_db';
+let selectedNode = null;
+
+/* ---------------------------
+   UI Initialization
+   --------------------------- */
+function refreshDatabaseTree() {
+  const tree = document.getElementById('databaseTree');
+  tree.innerHTML = '';
+  Object.keys(databases).forEach(dbName => {
+    const dbNode = document.createElement('div');
+    dbNode.className = 'tree-node database';
+    dbNode.innerHTML = `<span class="tree-icon">▶</span>${dbName}`;
+    dbNode.dataset.type = 'database';
+    dbNode.dataset.name = dbName;
+    dbNode.onclick = () => selectNode(dbNode);
+    tree.appendChild(dbNode);
+
+    // tables
+    Object.keys(databases[dbName].tables).forEach(tableName => {
+      const tableNode = document.createElement('div');
+      tableNode.className = 'tree-node table';
+      tableNode.innerHTML = `<span class="tree-icon">📄</span>${tableName}`;
+      tableNode.dataset.type = 'table';
+      tableNode.dataset.name = tableName;
+      tableNode.oncontextmenu = (e) => showContextMenu(e, tableName, dbName);
+      tableNode.onclick = () => selectNode(tableNode);
+      tree.appendChild(tableNode);
+
+      databases[dbName].tables[tableName].columns.forEach(column => {
+        const columnNode = document.createElement('div');
+        columnNode.className = 'tree-node column';
+        const keyIcon = column.primaryKey ? '🔑' : (column.foreignKey ? '🔗' : '📝');
+        const keyText = column.primaryKey ? ' - PK' : (column.foreignKey ? ` - FK -> ${column.foreignKey.table}.${column.foreignKey.column}` : '');
+        columnNode.innerHTML = `<span class="tree-icon">${keyIcon}</span>${column.name} (${column.type})${keyText}`;
+        columnNode.dataset.type = 'column';
+        tree.appendChild(columnNode);
+      });
+    });
+  });
+
+  // refresh create table DB select
+  const select = document.getElementById('tableDbSelect');
+  select.innerHTML = '';
+  Object.keys(databases).forEach(dbName => {
+    const opt = document.createElement('option'); opt.value = dbName; opt.textContent = dbName;
+    if (dbName === currentDatabase) opt.selected = true;
+    select.appendChild(opt);
+  });
+
+  document.getElementById('currentDbName').textContent = currentDatabase;
+}
+
+/* ---------------------------
+   Tabs & Modals
+   --------------------------- */
+function showTab(tabName, ev) {
+  document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById(tabName).classList.add('active');
+  if (ev && ev.target) ev.target.classList.add('active');
+  if (tabName==='schema') {
+    renderSchemaDesigner();
+    updateSvgSize();
+  }
+}
+
+function showCreateDatabaseModal(){document.getElementById('createDatabaseModal').style.display='block'}
+function showCreateTableModal(){
+  document.getElementById('createTableModal').style.display='block';
+  if(!document.getElementById('columnsTbody').children.length) addColumnRow();
+}
+function closeModal(id){document.getElementById(id).style.display='none'}
+
+/* ---------------------------
+   Column form (Create Table modal)
+   --------------------------- */
+function addColumnRow(col){
+  const tbody = document.getElementById('columnsTbody');
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td><input class="col-name" placeholder="column_name" value="${col?.name||''}" /></td>
+    <td><input class="col-type" placeholder="INT, VARCHAR(100), DECIMAL(10,2)" value="${col?.type||''}" /></td>
+    <td style="text-align:center"><input type="checkbox" class="col-pk" ${col?.primaryKey ? 'checked' : ''} /></td>
+    <td style="text-align:center"><input type="checkbox" class="col-null" ${col?.nullable ? '' : 'checked'} /></td>
+    <td><input class="col-ref" placeholder="table.column (e.g. departments.id)" value="${col?.foreignKey ? (col.foreignKey.table + '.' + col.foreignKey.column) : ''}" /></td>
+    <td style="text-align:center"><button class="btn btn-secondary" onclick="this.closest('tr').remove()">Remove</button></td>
+  `;
+  tbody.appendChild(tr);
+}
+function collectColumnsFromForm(){
+  const rows = Array.from(document.querySelectorAll('#columnsTbody tr'));
+  const cols = rows.map(r=>{
+    const name = r.querySelector('.col-name').value.trim();
+    const type = r.querySelector('.col-type').value.trim();
+    const pk = r.querySelector('.col-pk').checked;
+    const notNullChecked = r.querySelector('.col-null').checked;
+    const nullable = !notNullChecked;
+    const refText = r.querySelector('.col-ref').value.trim();
+    let foreignKey = null;
+    if(refText){
+      const parts = refText.split('.');
+      if(parts.length === 2) foreignKey = {table: parts[0].trim(), column: parts[1].trim()};
+    }
+    return {name,type,primaryKey:pk,nullable, foreignKey};
+  }).filter(c=>c.name && c.type);
+  return cols;
+}
+
+/* ---------------------------
+   Create DB / Table
+   --------------------------- */
+function createDatabase(){
+  const name = document.getElementById('dbName').value.trim();
+  if(!name){alert('Please enter a database name');return}
+  if(databases[name]){alert('Database already exists');return}
+  databases[name] = {tables:{}};
+  document.getElementById('dbName').value='';
+  closeModal('createDatabaseModal');
+  setStatus(`Database '${name}' created`, 'success');
+  refreshDatabaseTree();
+}
+
+function createTableFromForm(){
+  const db = document.getElementById('tableDbSelect').value;
+  const name = document.getElementById('tableName').value.trim();
+  if(!name){alert('Please enter table name');return}
+  const cols = collectColumnsFromForm();
+  if(!cols.length){alert('Add at least one column');return}
+  if(databases[db].tables[name]){alert('Table exists');return}
+  const colNames = cols.map(c=>c.name.toLowerCase());
+  if((new Set(colNames)).size !== colNames.length){alert('Duplicate column names');return}
+  for(const c of cols){
+    if(c.foreignKey){
+      const refTable = c.foreignKey.table;
+      const refCol = c.foreignKey.column;
+      if(!databases[db].tables[refTable]){
+        alert(`Reference error: table ${refTable} not found in database ${db}`); return;
+      }
+      const refExists = databases[db].tables[refTable].columns.some(x => x.name === refCol);
+      if(!refExists){ alert(`Reference error: column ${refCol} not found in ${refTable}`); return; }
+    }
+  }
+  databases[db].tables[name] = {columns: cols, data: []};
+  closeModal('createTableModal');
+  document.getElementById('tableName').value='';
+  document.getElementById('columnsTbody').innerHTML='';
+  setStatus(`Table '${name}' created in ${db}`, 'success');
+  refreshDatabaseTree();
+  renderSchemaDesigner();
+}
+
+/* ---------------------------
+   Context menu for tables
+   --------------------------- */
+function showContextMenu(e, tableName, dbName){
+  e.preventDefault();
+  const cm = document.getElementById('contextMenu');
+  cm.style.display = 'block';
+  cm.style.left = e.pageX + 'px';
+  cm.style.top = e.pageY + 'px';
+  cm.dataset.table = tableName;
+  cm.dataset.db = dbName;
+}
+document.addEventListener('click', ()=>document.getElementById('contextMenu').style.display='none');
+
+function editTable(){ alert('Edit table functionality would go here (not implemented)'); document.getElementById('contextMenu').style.display='none' }
+function dropTable(){
+  const cm = document.getElementById('contextMenu');
+  const table = cm.dataset.table; const db = cm.dataset.db;
+  if(confirm(`Drop table ${db}.${table}?`)){
+    delete databases[db].tables[table];
+    setStatus(`Table ${db}.${table} dropped`, 'success');
+    refreshDatabaseTree();
+    renderSchemaDesigner();
+  }
+  cm.style.display='none';
+}
+function viewTableData(){
+  const cm = document.getElementById('contextMenu'); const table = cm.dataset.table; const db = cm.dataset.db;
+  showTab('data');
+  loadTableData(table, db);
+  cm.style.display='none';
+}
+
+/* ---------------------------
+   SQL parsing helpers
+   --------------------------- */
+function splitTopLevelComma(str){
+  const parts=[]; let level=0, cur='';
+  for (let ch of str){
+    if (ch==='(') level++;
+    if (ch===')') level--;
+    if (ch===',' && level===0){ parts.push(cur.trim()); cur=''; continue;}
+    cur+=ch;
+  }
+  if(cur.trim()) parts.push(cur.trim());
+  return parts;
+}
+
+/**
+ * parseCreateTableContent:
+ * - Accepts inside of parentheses for CREATE TABLE
+ * - Returns {columns: [...], fks: [...]}
+ * - Recognizes:
+ *    - column definitions: name type [constraints ...] [REFERENCES refTable(refCol)]
+ *    - table-level FK: FOREIGN KEY (col) REFERENCES refTable(refCol)
+ */
+function parseCreateTableContent(argStr){
+  // normalize whitespace and newlines, but keep parentheses
+  let s = argStr.replace(/\r\n/g,'\n').replace(/\n/g,' ').trim();
+  // defensive: convert hyphen between word chars into underscore (e.g., DATE-DATE -> DATE_DATE)
+  s = s.replace(/([A-Za-z0-9_])\-([A-Za-z0-9_])/g,'$1_$2');
+  const parts = splitTopLevelComma(s);
+  const columns = [];
+  const fks = []; // {local: [col,...], refTable, ref: [col,...]}
+  for(const p of parts){
+    const token = p.trim();
+    if(/^constraint\s+/i.test(token)){
+      // could be CONSTRAINT name FOREIGN KEY (...) REFERENCES ...
+      const fkMatch = token.match(/foreign\s+key\s*\(([^)]+)\)\s*references\s+([`"]?)(\w+)\2\s*\(\s*([^)]+)\)/i);
+      if(fkMatch){
+        const localCols = fkMatch[1].split(',').map(x=>x.trim());
+        const refTable = fkMatch[3];
+        const refCols = fkMatch[4].split(',').map(x=>x.trim());
+        fks.push({local: localCols, refTable, ref: refCols});
+        continue;
+      }
+      // ignore other constraints for demo
+      continue;
+    }
+    if(/^foreign\s+key/i.test(token)){
+      const fkMatch = token.match(/foreign\s+key\s*\(([^)]+)\)\s*references\s+([`"]?)(\w+)\2\s*\(\s*([^)]+)\)/i);
+      if(fkMatch){
+        const localCols = fkMatch[1].split(',').map(x=>x.trim());
+        const refTable = fkMatch[3];
+        const refCols = fkMatch[4].split(',').map(x=>x.trim());
+        fks.push({local: localCols, refTable, ref: refCols});
+        continue;
+      } else {
+        throw new Error('Invalid FOREIGN KEY clause: ' + token);
+      }
+    }
+    // column definition
+    // attempt to capture: [name] [type and rest]
+    // name may be quoted with backticks or double quotes or plain
+    const colMatch = token.match(/^([`"]?)([A-Za-z0-9_]+)\1\s+([\s\S]+)/);
+    if(!colMatch){
+      // Maybe user wrote 'DATE-DATE' -> we replaced - with _. Try relaxed parse: name = first token, rest = remainder
+      const parts2 = token.split(/\s+/);
+      if(parts2.length >= 2){
+        const name = parts2[0];
+        const rest = parts2.slice(1).join(' ');
+        // proceed
+        const inlineFkMatch = rest.match(/references\s+([`"]?)(\w+)\1\s*\(\s*([`"]?)(\w+)\3\s*\)/i);
+        const primaryKey = /primary\s+key/i.test(rest);
+        const nullable = !/not\s+null/i.test(rest);
+        const type = rest.split(/\s+/)[0];
+        const colObj = {name, type, primaryKey: !!primaryKey, nullable};
+        if(inlineFkMatch) colObj.foreignKey = {table:inlineFkMatch[2], column:inlineFkMatch[4]};
+        columns.push(colObj);
+      } else {
+        // cannot parse column, skip or throw
+        throw new Error('Invalid column definition: ' + token);
+      }
+    } else {
+      const name = colMatch[2];
+      const rest = colMatch[3];
+      const inlineFkMatch = rest.match(/references\s+([`"]?)(\w+)\1\s*\(\s*([`"]?)(\w+)\3\s*\)/i);
+      const primaryKey = /primary\s+key/i.test(rest);
+      const nullable = !/not\s+null/i.test(rest);
+      // type is the first token in rest until a keyword
+      const partsType = rest.trim().split(/\s+/);
+      let typeParts = [];
+      for(let i=0;i<partsType.length;i++){
+        const w = partsType[i].toLowerCase();
+        if(['primary','key','not','null','references','constraint','unique'].includes(w)) break;
+        typeParts.push(partsType[i]);
+      }
+      const type = typeParts.join(' ') || 'UNKNOWN';
+      const colObj = {name, type, primaryKey: !!primaryKey, nullable};
+      if(inlineFkMatch) colObj.foreignKey = {table:inlineFkMatch[2], column:inlineFkMatch[4]};
+      columns.push(colObj);
+    }
+  }
+
+  // apply table-level foreign keys: link to columns if names match
+  for(const fk of fks){
+    // handle simple 1-1 mapping primarily
+    for(let i=0;i<fk.local.length;i++){
+      const localName = fk.local[i];
+      const refName = (fk.ref && fk.ref[i]) ? fk.ref[i] : fk.ref[0];
+      const col = columns.find(c=>c.name.toLowerCase() === localName.toLowerCase());
+      if(col){
+        col.foreignKey = {table: fk.refTable, column: refName};
+      } else {
+        // column not found - throw to let user know
+        throw new Error(`Foreign key refers to column ${localName} which was not found in table definition`);
+      }
+    }
+  }
+
+  return {columns};
+}
+
+/* ---------------------------
+   Very small simulated SQL interpreter
+   (supports CREATE TABLE with table-level FOREIGN KEY clauses)
+   --------------------------- */
+function executeQuery() {
+  const raw = document.getElementById('sqlQuery').value.trim();
+  const statusEl = document.getElementById('resultsStatus');
+  const resultsEl = document.getElementById('queryResults');
+  if(!raw){statusEl.textContent='No query to execute'; return;}
+  statusEl.textContent = 'Executing...';
+
+  setTimeout(()=>{ // simulate latency
+    try {
+      const result = simulateQuery(raw);
+      displayResults(result);
+      statusEl.textContent = `Query executed successfully (${result.rows ? result.rows.length : 0} rows)`;
+      setStatus('Last query OK', 'success');
+    } catch(err){
+      displayError(err.message);
+      statusEl.textContent = 'Query failed';
+      setStatus(err.message, 'error');
+    }
+  }, 200);
+}
+
+function parseValuesList(valuesStr){
+  const vals = splitTopLevelComma(valuesStr).map(v=>{
+    v=v.trim();
+    if(/^'.*'$/.test(v) || /^".*"$/.test(v)) return v.slice(1,-1);
+    if(v.toLowerCase()==='null') return null;
+    if(!isNaN(Number(v))) return Number(v);
+    return v;
+  });
+  return vals;
+}
+
+function simulateQuery(raw){
+  const statements = raw.split(';').map(s=>s.trim()).filter(Boolean);
+  if(!statements.length) throw new Error('No statement found');
+  // we will execute each statement sequentially to support multi-statement scripts
+  let lastResult = {columns:['message'], rows:[]};
+  for(const stmtFull of statements){
+    const stmt = stmtFull.trim();
+    if(/^use\s+\w+/i.test(stmt)){
+      const m = stmt.match(/^use\s+([`"]?)(\w+)\1/i);
+      if(!m) throw new Error('Invalid USE syntax');
+      const db = m[2];
+      if(!databases[db]) throw new Error(`Unknown database '${db}'`);
+      currentDatabase = db;
+      refreshDatabaseTree();
+      lastResult = {columns:['message'], rows:[{message:`Switched to ${db}`} ]};
+      continue;
+    }
+
+    if(/^create\s+database\s+/i.test(stmt)){
+      const m = stmt.match(/^create\s+database\s+([`"]?)(\w+)\1/i);
+      if(!m) throw new Error('Invalid CREATE DATABASE syntax');
+      const db = m[2];
+      if(databases[db]) throw new Error('Database exists');
+      databases[db] = {tables:{}};
+      refreshDatabaseTree();
+      lastResult = {columns:['message'], rows:[{message:`Database ${db} created`}]};
+      continue;
+    }
+
+    if(/^drop\s+database\s+/i.test(stmt)){
+      const m = stmt.match(/^drop\s+database\s+([`"]?)(\w+)\1/i);
+      if(!m) throw new Error('Invalid DROP DATABASE syntax');
+      const db = m[2]; if(!databases[db]) throw new Error('Unknown database');
+      delete databases[db]; if(currentDatabase===db) currentDatabase=Object.keys(databases)[0]||null;
+      refreshDatabaseTree();
+      lastResult = {columns:['message'], rows:[{message:`Database ${db} dropped`}]};
+      continue;
+    }
+
+    if(/^show\s+tables/i.test(stmt)){
+      const db = currentDatabase;
+      if(!db) throw new Error('No database selected');
+      const tables = Object.keys(databases[db].tables);
+      lastResult = {columns:['table'], rows: tables.map(t=>({table:t}))};
+      continue;
+    }
+
+    if(/^create\s+table\s+/i.test(stmt)){
+      const m = stmt.match(/^create\s+table\s+([`"]?)(\w+)\1\s*\(([\s\S]+)\)$/i);
+      if(!m) throw new Error('Invalid CREATE TABLE syntax. Use: CREATE TABLE name (col type, ... )');
+      const table = m[2];
+      const args = m[3];
+      if(!currentDatabase) throw new Error('No database selected (use DATABASE or create one first)');
+      if(databases[currentDatabase].tables[table]) throw new Error('Table already exists: ' + table);
+      // parse content
+      const parsed = parseCreateTableContent(args);
+      // validations
+      const cn = parsed.columns.map(c=>c.name.toLowerCase());
+      if((new Set(cn)).size !== cn.length) throw new Error('Duplicate column names');
+      // ensure referenced tables/columns exist (defer or require existing)
+      for(const c of parsed.columns){
+        if(c.foreignKey){
+          const rt = c.foreignKey.table, rc = c.foreignKey.column;
+          if(!databases[currentDatabase].tables[rt]) throw new Error(`Referenced table ${rt} not found (for ${table}.${c.name})`);
+          if(!databases[currentDatabase].tables[rt].columns.some(x=>x.name===rc)) throw new Error(`Referenced column ${rc} not found in ${rt} (for ${table}.${c.name})`);
+        }
+      }
+      databases[currentDatabase].tables[table] = {columns: parsed.columns, data: []};
+      refreshDatabaseTree(); renderSchemaDesigner(); updateSvgSize();
+      lastResult = {columns:['message'], rows:[{message:`Table ${currentDatabase}.${table} created`}]};
+      continue;
+    }
+
+    if(/^drop\s+table\s+/i.test(stmt)){
+      const m = stmt.match(/^drop\s+table\s+([`"]?)(\w+)\1/i);
+      if(!m) throw new Error('Invalid DROP TABLE syntax');
+      const table = m[2];
+      if(!currentDatabase) throw new Error('No database selected');
+      if(!databases[currentDatabase].tables[table]) throw new Error('Unknown table');
+      delete databases[currentDatabase].tables[table];
+      refreshDatabaseTree(); renderSchemaDesigner(); updateSvgSize();
+      lastResult = {columns:['message'], rows:[{message:`Table ${currentDatabase}.${table} dropped`}]};
+      continue;
+    }
+
+    if(/^describe\s+/i.test(stmt) || /^desc\s+/i.test(stmt)){
+      const m = stmt.match(/^(?:describe|desc)\s+([`"]?)(\w+)\1/i);
+      if(!m) throw new Error('Invalid DESCRIBE syntax');
+      const table = m[2];
+      if(!currentDatabase) throw new Error('No database selected');
+      if(!databases[currentDatabase].tables[table]) throw new Error('Unknown table');
+      const cols = databases[currentDatabase].tables[table].columns;
+      lastResult = {columns:['Field','Type','Null','Key','References'], rows: cols.map(c=>({Field:c.name, Type:c.type, Null:c.nullable? 'YES':'NO', Key:c.primaryKey? 'PRI':'', References: c.foreignKey ? (c.foreignKey.table + '.' + c.foreignKey.column) : ''}))};
+      continue;
+    }
+
+    // INSERT, SELECT, ALTER (basic) — reuse earlier simpler logic
+    const insertRe = /^insert\s+into\s+([`"]?)(\w+)\1\s*(\(([^)]+)\))?\s*values\s*\(([\s\S]+)\)$/i;
+    if(insertRe.test(stmt)){
+      const m = stmt.match(insertRe);
+      if(!m) throw new Error('Invalid INSERT syntax. Example: INSERT INTO table (col1,col2) VALUES (val1,val2)');
+      const table = m[2];
+      const colList = m[4]; const vals = m[5];
+      if(!currentDatabase) throw new Error('No database selected');
+      const tableObj = databases[currentDatabase].tables[table];
+      if(!tableObj) throw new Error('Unknown table');
+      let cols;
+      if(colList) cols = colList.split(',').map(s=>s.trim());
+      else cols = tableObj.columns.map(c=>c.name);
+      const values = parseValuesList(vals);
+      if(values.length !== cols.length) throw new Error('Column count does not match values count');
+      const row = {};
+      for(let i=0;i<cols.length;i++) row[cols[i]] = values[i];
+      tableObj.data.push(row);
+      refreshDatabaseTree();
+      lastResult = {columns:['message'], rows:[{message:'1 row inserted'}]};
+      continue;
+    }
+
+    if(/^select\s+/i.test(stmt)){
+      const m = stmt.match(/^select\s+([\s\S]+)\s+from\s+([`"]?)(\w+)\2(\s+where\s+([\s\S]+))?$/i);
+      if(!m) throw new Error('Basic SELECT parser supports: SELECT cols FROM table [WHERE col = value]');
+      const colsPart = m[1].trim();
+      const table = m[3];
+      const wherePart = m[5];
+      if(!currentDatabase) throw new Error('No database selected');
+      const tableObj = databases[currentDatabase].tables[table];
+      if(!tableObj) throw new Error('Unknown table');
+      const allCols = tableObj.columns.map(c=>c.name);
+      const selectCols = colsPart === '*' ? allCols : colsPart.split(',').map(s=>s.trim());
+      let rows = tableObj.data.map(r=>r);
+      if(wherePart){
+        const wm = wherePart.match(/^\s*([\w]+)\s*=\s*(.+)\s*$/);
+        if(!wm) throw new Error('Unsupported WHERE. Only equality (col = value) is supported in this demo.');
+        const col = wm[1]; let val = wm[2].trim();
+        if(/^'.*'$/.test(val)||/^".*"$/.test(val)) val = val.slice(1,-1);
+        else if(!isNaN(Number(val))) val = Number(val);
+        else if(val.toLowerCase()==='null') val = null;
+        rows = rows.filter(r=>r[col] == val);
+      }
+      lastResult = {columns:selectCols, rows: rows.map(r=>{
+        const out = {};
+        selectCols.forEach(c=> out[c] = r[c] === undefined ? null : r[c]);
+        return out;
+      })};
+      continue;
+    }
+
+    if(/^alter\s+table\s+/i.test(stmt)){
+      const addMatch = stmt.match(/^alter\s+table\s+([`"]?)(\w+)\1\s+add\s+column\s+([`"]?)(\w+)\3\s+([\w\(\), ]+)/i);
+      const dropMatch = stmt.match(/^alter\s+table\s+([`"]?)(\w+)\1\s+drop\s+column\s+([`"]?)(\w+)\3/i);
+      if(addMatch){
+        const table = addMatch[2]; const colName = addMatch[4]; const colType = addMatch[5].trim();
+        if(!currentDatabase) throw new Error('No database selected');
+        if(!databases[currentDatabase].tables[table]) throw new Error('Unknown table');
+        const tableObj = databases[currentDatabase].tables[table];
+        if(tableObj.columns.some(c=>c.name.toLowerCase()===colName.toLowerCase())) throw new Error('Column exists');
+        tableObj.columns.push({name:colName,type:colType,primaryKey:false,nullable:true});
+        refreshDatabaseTree(); renderSchemaDesigner();
+        lastResult = {columns:['message'], rows:[{message:`Column ${colName} added to ${table}`} ]};
+        continue;
+      }
+      if(dropMatch){
+        const table = dropMatch[2]; const colName = dropMatch[4];
+        if(!currentDatabase) throw new Error('No database selected');
+        const tableObj = databases[currentDatabase].tables[table];
+        if(!tableObj) throw new Error('Unknown table');
+        tableObj.columns = tableObj.columns.filter(c=>c.name.toLowerCase()!==colName.toLowerCase());
+        tableObj.data.forEach(r=> delete r[colName]);
+        refreshDatabaseTree(); renderSchemaDesigner();
+        lastResult = {columns:['message'], rows:[{message:`Column ${colName} dropped from ${table}`}]};
+        continue;
+      }
+      throw new Error('Unsupported ALTER TABLE syntax in this demo. Supported: ALTER TABLE name ADD COLUMN col TYPE; ALTER TABLE name DROP COLUMN col;');
+    }
+
+    throw new Error('Unsupported or invalid statement in this simplified engine: ' + stmt.split('\n')[0].slice(0,120));
+  } // end for each statement
+  return lastResult;
+}
+
+/* ---------------------------
+   Display results / errors
+   --------------------------- */
+function displayResults(result){
+  const resultsEl = document.getElementById('queryResults');
+  if(!result || !result.rows || result.rows.length===0){
+    resultsEl.innerHTML = '<div class="empty-state"><p>No results found</p></div>'; return;
+  }
+  let html = '<table><thead><tr>';
+  result.columns.forEach(c=> html += `<th>${escapeHtml(c)}</th>`);
+  html += '</tr></thead><tbody>';
+  result.rows.forEach(row=>{
+    html += '<tr>';
+    result.columns.forEach(col=>{
+      html += `<td>${escapeHtml(row[col]===undefined||row[col]===null ? '' : String(row[col]))}</td>`;
+    });
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  resultsEl.innerHTML = html;
+}
+
+function displayError(msg){
+  const resultsEl = document.getElementById('queryResults');
+  resultsEl.innerHTML = `<div style="color:#f48771;padding:20px;text-align:center;">Error: ${escapeHtml(msg)}</div>`;
+}
+
+function clearQuery(){
+  document.getElementById('sqlQuery').value='';
+  document.getElementById('queryResults').innerHTML = '<div class="empty-state"><p>Execute a query to see results</p></div>';
+  document.getElementById('resultsStatus').textContent = 'Ready';
+}
+
+function formatQuery(){
+  const t = document.getElementById('sqlQuery');
+  let q = t.value;
+  q = q.replace(/\bSELECT\b/gi,'SELECT').replace(/\bFROM\b/gi,'\nFROM').replace(/\bWHERE\b/gi,'\nWHERE').replace(/\bJOIN\b/gi,'\nJOIN').replace(/\bORDER BY\b/gi,'\nORDER BY').replace(/\bGROUP BY\b/gi,'\nGROUP BY').replace(/,\s*/g,', ');
+  t.value = q;
+  setStatus('Query formatted','success');
+  setTimeout(()=>setStatus('Ready'),2000);
+}
+
+/* ---------------------------
+   Helper UI & utilities
+   --------------------------- */
+function escapeHtml(s){
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function setStatus(msg, level){
+  const el = document.getElementById('statusText'); el.textContent = msg;
+  if(level==='error') el.classList.add('status-error'); else el.classList.remove('status-error');
+  if(level==='success') el.classList.add('status-success'); else el.classList.remove('status-success');
+}
+
+/* Keyboard shortcuts */
+document.addEventListener('keydown', function(e){
+  if(e.key === 'F5' || (e.ctrlKey && e.key === 'Enter')){
+    e.preventDefault(); executeQuery();
+  }
+});
+
+/* ---------------------------
+   Schema designer & relationship drawing
+   --------------------------- */
+function renderSchemaDesigner(){
+  const designer = document.getElementById('schemaDesigner');
+  const svg = document.getElementById('relationshipSvg');
+
+  // clear tables
+  designer.querySelectorAll('.table-box').forEach(b=>b.remove());
+
+  // keep defs
+  svg.innerHTML = `<defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#0e639c"></polygon>
+    </marker>
+  </defs>`;
+
+  // create table boxes
+  const tables = (databases[currentDatabase] ? databases[currentDatabase].tables : {});
+  let x = 20, y = 20;
+  let count = 0;
+  for(const tname in tables){
+    if(!tables.hasOwnProperty(tname)) continue;
+    const table = tables[tname];
+    const box = document.createElement('div');
+    box.className = 'table-box';
+    box.style.left = x + 'px';
+    box.style.top = y + 'px';
+    box.dataset.table = tname;
+
+    // header
+    const header = document.createElement('div');
+    header.className = 'table-header';
+    header.innerHTML = `<span>📄</span><strong style="margin-left:6px">${tname}</strong>`;
+    box.appendChild(header);
+
+    // fields
+    const fields = document.createElement('div');
+    fields.className = 'table-fields';
+    table.columns.forEach(col=>{
+      const f = document.createElement('div');
+      f.className = 'field';
+      if(col.primaryKey) f.classList.add('primary-key');
+      if(col.foreignKey) f.classList.add('foreign-key');
+      const icon = col.primaryKey ? '🔑' : (col.foreignKey ? '🔗' : '📝');
+      f.dataset.colName = col.name;
+      if(col.foreignKey) f.dataset.fkTable = col.foreignKey.table;
+      if(col.foreignKey) f.dataset.fkColumn = col.foreignKey.column;
+      f.innerHTML = `<span style="width:18px">${icon}</span><span class="colText">${col.name}</span><small style="margin-left:6px;color:#9aa3ab">(${col.type})</small>`;
+      fields.appendChild(f);
+    });
+    box.appendChild(fields);
+    designer.appendChild(box);
+
+    makeDraggable(box);
+
+    count++;
+    x += 260;
+    if(count % 3 === 0){ x = 20; y += 220; }
+  }
+
+  updateSvgSize();
+}
+
+/* Draggable implementation */
+function makeDraggable(element){
+  let dragging=false, startX=0, startY=0, initLeft=0, initTop=0;
+  const header = element.querySelector('.table-header');
+  header.style.cursor='grab';
+  header.addEventListener('mousedown', function(e){
+    dragging=true;
+    startX = e.clientX; startY = e.clientY;
+    initLeft = parseInt(window.getComputedStyle(element).left,10);
+    initTop = parseInt(window.getComputedStyle(element).top,10);
+    element.style.zIndex = 999;
+    e.preventDefault();
+  });
+  function move(e){
+    if(!dragging) return;
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+    element.style.left = (initLeft + dx) + 'px';
+    element.style.top = (initTop + dy) + 'px';
+    if(window._drawRequested) return;
+    window._drawRequested = true;
+    requestAnimationFrame(()=>{ drawRelationships(); window._drawRequested = false; });
+  }
+  function up(){
+    dragging=false;
+    element.style.zIndex = '';
+  }
+  document.addEventListener('mousemove', move);
+  document.addEventListener('mouseup', up);
+}
+
+/* Draw relationships using FK metadata and connect exact field rows */
+function drawRelationships(){
+  const svg = document.getElementById('relationshipSvg');
+  const designer = document.getElementById('schemaDesigner');
+  const defs = svg.querySelector('defs');
+  svg.innerHTML = ''; if(defs) svg.appendChild(defs);
+
+  const boxes = Array.from(designer.querySelectorAll('.table-box'));
+  const tableMap = {};
+  boxes.forEach(b => tableMap[b.dataset.table] = b);
+
+  boxes.forEach(box => {
+    const fieldEls = box.querySelectorAll('.field');
+    fieldEls.forEach(fieldEl => {
+      const fkTable = fieldEl.dataset.fkTable;
+      const fkColumn = fieldEl.dataset.fkColumn;
+      if(!fkTable || !fkColumn) return;
+      const targetBox = tableMap[fkTable];
+      if(!targetBox) return;
+      const targetField = Array.from(targetBox.querySelectorAll('.field')).find(f => f.dataset.colName === fkColumn);
+      const designerRect = designer.getBoundingClientRect();
+      const fieldRect = fieldEl.getBoundingClientRect();
+      const startX = fieldRect.left + fieldRect.width - designerRect.left - 8;
+      const startY = fieldRect.top + fieldRect.height/2 - designerRect.top;
+      let endX, endY;
+      if(targetField){
+        const targetRect = targetField.getBoundingClientRect();
+        endX = targetRect.left - designerRect.left + 8;
+        endY = targetRect.top + targetRect.height/2 - designerRect.top;
+      } else {
+        const tRect = targetBox.getBoundingClientRect();
+        endX = tRect.left - designerRect.left + 8;
+        endY = tRect.top + 24 - designerRect.top;
+      }
+      const dx = Math.abs(endX - startX);
+      const curviness = Math.min(200, Math.max(40, dx / 1.5));
+      const control1X = startX + curviness;
+      const control1Y = startY;
+      const control2X = endX - curviness;
+      const control2Y = endY;
+      const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+      const d = `M ${startX} ${startY} C ${control1X} ${control1Y}, ${control2X} ${control2Y}, ${endX} ${endY}`;
+      path.setAttribute('d', d);
+      path.setAttribute('class','relationship-path');
+      path.setAttribute('marker-end','url(#arrowhead)');
+      svg.appendChild(path);
+      const labelX = (startX + endX)/2;
+      const labelY = (startY + endY)/2 - 8;
+      const text = document.createElementNS('http://www.w3.org/2000/svg','text');
+      text.setAttribute('x', labelX);
+      text.setAttribute('y', labelY);
+      text.setAttribute('class','relationship-label');
+      text.textContent = `${box.dataset.table}.${fieldEl.dataset.colName} → ${fkTable}.${fkColumn}`;
+      svg.appendChild(text);
+    });
+  });
+}
+
+/* Maintain svg size to match designer content */
+const designerEl = document.getElementById('schemaDesigner');
+function updateSvgSize(){
+  const svg = document.getElementById('relationshipSvg');
+  svg.style.width = designerEl.scrollWidth + 'px';
+  svg.style.height = designerEl.scrollHeight + 'px';
+  drawRelationships();
+}
+window.addEventListener('resize', ()=>{ updateSvgSize(); renderSchemaDesigner(); });
+designerEl.addEventListener('scroll', ()=>{ drawRelationships(); });
+
+/* ---------------------------
+   Data viewer (when selecting table)
+   --------------------------- */
+function selectNode(node){
+  document.querySelectorAll('.tree-node').forEach(n=>n.classList.remove('selected'));
+  node.classList.add('selected');
+  selectedNode = node;
+  if(node.dataset.type === 'table'){
+    loadTableData(node.dataset.name, currentDatabase);
+    showTab('data');
+  } else if(node.dataset.type === 'database'){
+    currentDatabase = node.dataset.name;
+    refreshDatabaseTree();
+    setStatus(`Switched to ${currentDatabase}`,'success');
+  }
+}
+
+function loadTableData(tableName, dbName){
+  const db = dbName || currentDatabase;
+  const dataTab = document.getElementById('data');
+  if(!databases[db] || !databases[db].tables[tableName]){
+    dataTab.innerHTML = '<div class="empty-state"><p>Table not found</p></div>'; return;
+  }
+  const table = databases[db].tables[tableName];
+  let html = '<div class="results-panel"><div class="results-toolbar">';
+  html += `<span>Table: ${db}.${tableName} (${table.data.length} rows)</span>`;
+  html += '</div><div class="results-content"><table><thead><tr>';
+  table.columns.forEach(c=> html += `<th>${escapeHtml(c.name)}</th>`);
+  html += '</tr></thead><tbody>';
+  table.data.forEach(r=>{
+    html += '<tr>';
+    table.columns.forEach(c=> html += `<td>${escapeHtml(r[c.name]===undefined||r[c.name]===null ? '' : String(r[c.name]))}</td>`);
+    html += '</tr>';
+  });
+  html += '</tbody></table></div></div>';
+  dataTab.innerHTML = html;
+}
+
+/* ---------------------------
+   Initialization
+   --------------------------- */
+window.onload = function(){
+  refreshDatabaseTree();
+  renderSchemaDesigner();
+  updateSvgSize();
+  document.getElementById('statusText').textContent = 'Ready';
+  document.getElementById('tableDbSelect').addEventListener('change', function(){});
+  setTimeout(()=>{ updateSvgSize(); drawRelationships(); }, 150);
+  // sample: set helpful text in query box (you can paste your CREATE TABLE script)
+  document.getElementById('sqlQuery').value = "-- Paste CREATE TABLE script here, then press Execute (F5)\n";
+};
+
+/* expose some functions to console for debugging */
+window.__app = {databases, renderSchemaDesigner, drawRelationships, updateSvgSize};
+</script>
+</body>
+</html>
