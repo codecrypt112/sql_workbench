@@ -687,55 +687,230 @@ function simulateQuery(raw){
     }
 
     // INSERT, SELECT, ALTER (basic) — reuse earlier simpler logic
-    const insertRe = /^insert\s+into\s+([`"]?)(\w+)\1\s*(\(([^)]+)\))?\s*values\s*\(([\s\S]+)\)$/i;
+    const insertRe = /^insert\s+into\s+([`"]?)(\w+)\1\s*(\(([^)]+)\))?\s*values\s*([\s\S]+)$/i;
     if(insertRe.test(stmt)){
       const m = stmt.match(insertRe);
       if(!m) throw new Error('Invalid INSERT syntax. Example: INSERT INTO table (col1,col2) VALUES (val1,val2)');
       const table = m[2];
-      const colList = m[4]; const vals = m[5];
+      const colList = m[4]; const vals = m[5].trim();
       if(!currentDatabase) throw new Error('No database selected');
       const tableObj = databases[currentDatabase].tables[table];
       if(!tableObj) throw new Error('Unknown table');
       let cols;
       if(colList) cols = colList.split(',').map(s=>s.trim());
       else cols = tableObj.columns.map(c=>c.name);
-      const values = parseValuesList(vals);
-      if(values.length !== cols.length) throw new Error('Column count does not match values count');
-      const row = {};
-      for(let i=0;i<cols.length;i++) row[cols[i]] = values[i];
-      tableObj.data.push(row);
+      
+      // Split multiple value sets: (val1,val2),(val3,val4)
+      const valueSets = [];
+      let current = '';
+      let depth = 0;
+      for(let i = 0; i < vals.length; i++){
+        const ch = vals[i];
+        if(ch === '(') depth++;
+        if(ch === ')') depth--;
+        current += ch;
+        if(depth === 0 && ch === ')'){
+          valueSets.push(current.trim());
+          current = '';
+          // Skip comma and whitespace
+          while(i + 1 < vals.length && (vals[i+1] === ',' || vals[i+1] === ' ' || vals[i+1] === '\n' || vals[i+1] === '\r')) i++;
+        }
+      }
+      
+      let insertedCount = 0;
+      for(const valueSet of valueSets){
+        // Remove outer parentheses
+        const innerVals = valueSet.replace(/^\(\s*|\s*\)$/g, '');
+        const values = parseValuesList(innerVals);
+        if(values.length !== cols.length) throw new Error('Column count does not match values count');
+        const row = {};
+        for(let i=0;i<cols.length;i++) row[cols[i]] = values[i];
+        tableObj.data.push(row);
+        insertedCount++;
+      }
+      
       refreshDatabaseTree();
-      lastResult = {columns:['message'], rows:[{message:'1 row inserted'}]};
+      lastResult = {columns:['message'], rows:[{message:`${insertedCount} row(s) inserted`}]};
       continue;
     }
 
     if(/^select\s+/i.test(stmt)){
-      const m = stmt.match(/^select\s+([\s\S]+)\s+from\s+([`"]?)(\w+)\2(\s+where\s+([\s\S]+))?$/i);
-      if(!m) throw new Error('Basic SELECT parser supports: SELECT cols FROM table [WHERE col = value]');
-      const colsPart = m[1].trim();
-      const table = m[3];
-      const wherePart = m[5];
-      if(!currentDatabase) throw new Error('No database selected');
-      const tableObj = databases[currentDatabase].tables[table];
-      if(!tableObj) throw new Error('Unknown table');
-      const allCols = tableObj.columns.map(c=>c.name);
-      const selectCols = colsPart === '*' ? allCols : colsPart.split(',').map(s=>s.trim());
-      let rows = tableObj.data.map(r=>r);
-      if(wherePart){
-        const wm = wherePart.match(/^\s*([\w]+)\s*=\s*(.+)\s*$/);
-        if(!wm) throw new Error('Unsupported WHERE. Only equality (col = value) is supported in this demo.');
-        const col = wm[1]; let val = wm[2].trim();
-        if(/^'.*'$/.test(val)||/^".*"$/.test(val)) val = val.slice(1,-1);
-        else if(!isNaN(Number(val))) val = Number(val);
-        else if(val.toLowerCase()==='null') val = null;
-        rows = rows.filter(r=>r[col] == val);
+      // Try to detect JOIN syntax
+      const hasJoin = /\bjoin\b/i.test(stmt);
+      
+      if(hasJoin){
+        // Parse SELECT with JOINs
+        // Extract parts: SELECT cols FROM table alias JOIN ...
+        const selectMatch = stmt.match(/^select\s+([\s\S]+?)\s+from\s+([\s\S]+)$/i);
+        if(!selectMatch) throw new Error('Invalid SELECT syntax');
+        const selectPart = selectMatch[1].trim();
+        const fromPart = selectMatch[2].trim();
+        
+        if(!currentDatabase) throw new Error('No database selected');
+        
+        // Parse FROM clause with JOINs
+        // Format: table1 [alias1] [JOIN table2 [alias2] ON condition] ...
+        const joinRegex = /(\w+)\s+(\w+)\s*(?:(?:inner\s+)?join\s+(\w+)\s+(\w+)\s+on\s+([\w.]+)\s*=\s*([\w.]+))?/gi;
+        
+        // Split by JOIN keyword to parse each join
+        const parts = fromPart.split(/\bjoin\b/i);
+        const tables = {};
+        const aliases = {};
+        
+        // Parse first table (FROM table alias)
+        const firstTableMatch = parts[0].trim().match(/^(\w+)(?:\s+(\w+))?/);
+        if(firstTableMatch){
+          const tname = firstTableMatch[1];
+          const talias = firstTableMatch[2] || tname;
+          if(!databases[currentDatabase].tables[tname]) throw new Error(`Unknown table: ${tname}`);
+          tables[talias] = {name: tname, data: databases[currentDatabase].tables[tname].data};
+          aliases[talias] = tname;
+        }
+        
+        // Parse JOINs
+        for(let i = 1; i < parts.length; i++){
+          const joinPart = parts[i].trim();
+          const joinMatch = joinPart.match(/^(\w+)(?:\s+(\w+))?\s+on\s+([\w.]+)\s*=\s*([\w.]+)/i);
+          if(joinMatch){
+            const tname = joinMatch[1];
+            const talias = joinMatch[2] || tname;
+            const leftCol = joinMatch[3];
+            const rightCol = joinMatch[4];
+            
+            if(!databases[currentDatabase].tables[tname]) throw new Error(`Unknown table: ${tname}`);
+            tables[talias] = {name: tname, data: databases[currentDatabase].tables[tname].data};
+            aliases[talias] = tname;
+          }
+        }
+        
+        // Perform cross join first, then filter by ON conditions
+        let resultRows = [];
+        const tableAliases = Object.keys(tables);
+        
+        // Start with first table
+        resultRows = tables[tableAliases[0]].data.map(row => {
+          const prefixedRow = {};
+          const tname = aliases[tableAliases[0]];
+          Object.keys(row).forEach(col => {
+            prefixedRow[`${tableAliases[0]}.${col}`] = row[col];
+            prefixedRow[col] = row[col]; // Also add without prefix
+          });
+          return prefixedRow;
+        });
+        
+        // Join remaining tables
+        for(let i = 1; i < tableAliases.length; i++){
+          const alias = tableAliases[i];
+          const tname = aliases[alias];
+          const tableData = tables[alias].data;
+          
+          // Find the ON condition for this join
+          const joinPart = parts[i].trim();
+          const joinMatch = joinPart.match(/on\s+([\w.]+)\s*=\s*([\w.]+)/i);
+          
+          if(joinMatch){
+            const leftCol = joinMatch[1];
+            const rightCol = joinMatch[2];
+            
+            const newRows = [];
+            for(const existingRow of resultRows){
+              for(const newRow of tableData){
+                // Check join condition
+                const leftVal = existingRow[leftCol];
+                const rightVal = newRow[rightCol.split('.')[1] || rightCol];
+                
+                if(leftVal == rightVal){
+                  const combinedRow = {...existingRow};
+                  Object.keys(newRow).forEach(col => {
+                    combinedRow[`${alias}.${col}`] = newRow[col];
+                    if(!combinedRow[col]) combinedRow[col] = newRow[col];
+                  });
+                  newRows.push(combinedRow);
+                }
+              }
+            }
+            resultRows = newRows;
+          }
+        }
+        
+        // Parse SELECT columns
+        const selectCols = selectPart.split(',').map(s => s.trim());
+        const outputCols = [];
+        
+        lastResult = {
+          columns: selectCols.map(colExpr => {
+            // Handle expressions like "p.price * oi.qty AS amount"
+            const asMatch = colExpr.match(/(.+)\s+as\s+(\w+)/i);
+            if(asMatch){
+              return asMatch[2];
+            }
+            // Handle qualified names like "c.name"
+            const parts = colExpr.split('.');
+            return parts.length > 1 ? parts[1] : colExpr;
+          }),
+          rows: resultRows.map(row => {
+            const outRow = {};
+            selectCols.forEach(colExpr => {
+              const asMatch = colExpr.match(/(.+)\s+as\s+(\w+)/i);
+              let colName, expression;
+              
+              if(asMatch){
+                colName = asMatch[2];
+                expression = asMatch[1].trim();
+              } else {
+                expression = colExpr;
+                const parts = colExpr.split('.');
+                colName = parts.length > 1 ? parts[1] : colExpr;
+              }
+              
+              // Evaluate expression
+              if(expression.includes('*')){
+                // Simple multiplication: a.col * b.col
+                const multParts = expression.split('*').map(p => p.trim());
+                let result = 1;
+                for(const part of multParts){
+                  const val = row[part];
+                  result *= (val !== undefined && val !== null) ? Number(val) : 0;
+                }
+                outRow[colName] = result;
+              } else {
+                // Direct column reference
+                outRow[colName] = row[expression] !== undefined ? row[expression] : null;
+              }
+            });
+            return outRow;
+          })
+        };
+        continue;
+      } else {
+        // Simple SELECT without JOINs
+        const m = stmt.match(/^select\s+([\s\S]+)\s+from\s+([`"]?)(\w+)\2(\s+where\s+([\s\S]+))?$/i);
+        if(!m) throw new Error('Basic SELECT parser supports: SELECT cols FROM table [WHERE col = value]');
+        const colsPart = m[1].trim();
+        const table = m[3];
+        const wherePart = m[5];
+        if(!currentDatabase) throw new Error('No database selected');
+        const tableObj = databases[currentDatabase].tables[table];
+        if(!tableObj) throw new Error('Unknown table');
+        const allCols = tableObj.columns.map(c=>c.name);
+        const selectCols = colsPart === '*' ? allCols : colsPart.split(',').map(s=>s.trim());
+        let rows = tableObj.data.map(r=>r);
+        if(wherePart){
+          const wm = wherePart.match(/^\s*([\w]+)\s*=\s*(.+)\s*$/);
+          if(!wm) throw new Error('Unsupported WHERE. Only equality (col = value) is supported in this demo.');
+          const col = wm[1]; let val = wm[2].trim();
+          if(/^'.*'$/.test(val)||/^".*"$/.test(val)) val = val.slice(1,-1);
+          else if(!isNaN(Number(val))) val = Number(val);
+          else if(val.toLowerCase()==='null') val = null;
+          rows = rows.filter(r=>r[col] == val);
+        }
+        lastResult = {columns:selectCols, rows: rows.map(r=>{
+          const out = {};
+          selectCols.forEach(c=> out[c] = r[c] === undefined ? null : r[c]);
+          return out;
+        })};
+        continue;
       }
-      lastResult = {columns:selectCols, rows: rows.map(r=>{
-        const out = {};
-        selectCols.forEach(c=> out[c] = r[c] === undefined ? null : r[c]);
-        return out;
-      })};
-      continue;
     }
 
     if(/^alter\s+table\s+/i.test(stmt)){
